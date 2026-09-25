@@ -219,6 +219,12 @@ int oplus_ofp_init(void *dsi_panel)
 	oplus_ofp_fp_type_compatible_mode_config();
 
 	if (oplus_ofp_is_supported()) {
+		/* A zero or absent threshold preserves vendor-controlled AOD brightness. */
+		rc = utils->read_u32(utils->data, "oplus,dsi-aod-low-brightness-threshold", &value);
+		p_oplus_ofp_params->aod_low_brightness_threshold = rc ? 0 : value;
+		OFP_INFO("aod_low_brightness_threshold:%u\n",
+			p_oplus_ofp_params->aod_low_brightness_threshold);
+
 		/* indicates whether gamut needs to be bypassed in aod/fod scenarios or not */
 		p_oplus_ofp_params->need_to_bypass_gamut = utils->read_bool(utils->data, "oplus,ofp-need-to-bypass-gamut");
 		OFP_INFO("need_to_bypass_gamut:%d\n", p_oplus_ofp_params->need_to_bypass_gamut);
@@ -807,6 +813,17 @@ static int oplus_ofp_panel_cmd_set_nolock(void *dsi_panel, enum dsi_cmd_set_type
 
 	/* after tx cmd set */
 	switch (type) {
+	case DSI_CMD_AOD_LOW_LIGHT_MODE:
+	case DSI_CMD_AOD_HIGH_LIGHT_MODE:
+		if (p_oplus_ofp_params->aod_low_brightness_threshold) {
+			/* Record the mode only after the panel command succeeds. */
+			p_oplus_ofp_params->aod_light_mode = type == DSI_CMD_AOD_LOW_LIGHT_MODE;
+			OFP_INFO("aod backlight:%u mode:%u\n", panel->bl_config.bl_level,
+				p_oplus_ofp_params->aod_light_mode);
+			OPLUS_OFP_TRACE_INT("oplus_ofp_aod_light_mode", p_oplus_ofp_params->aod_light_mode);
+		}
+		break;
+
 	case DSI_CMD_HBM_ON:
 		oplus_ofp_set_hbm_state(true);
 		oplus_hbm_pwm_state(panel, true);
@@ -2946,6 +2963,18 @@ static int oplus_ofp_lhbm_pressed_icon_grayscale_update(void *dsi_panel, unsigne
 	return rc;
 }
 
+/* Keep the upper-layer brightness interface while using AOD-specific commands. */
+static enum dsi_cmd_set_type oplus_ofp_aod_brightness_cmd(struct dsi_panel *panel)
+{
+	struct oplus_ofp_params *params = oplus_ofp_get_params(oplus_ofp_display_id);
+	unsigned int mode = params->aod_light_mode;
+
+	if (params->aod_low_brightness_threshold && panel->bl_config.bl_level)
+		mode = panel->bl_config.bl_level <= params->aod_low_brightness_threshold;
+
+	return mode ? DSI_CMD_AOD_LOW_LIGHT_MODE : DSI_CMD_AOD_HIGH_LIGHT_MODE;
+}
+
 /* need filter backlight in hbm mode, hbm state and aod unlocking process */
 bool oplus_ofp_backlight_filter(void *dsi_panel, unsigned int bl_level)
 {
@@ -3043,6 +3072,12 @@ bool oplus_ofp_backlight_filter(void *dsi_panel, unsigned int bl_level)
 		OFP_INFO("dim layer exist, filter backlight %u setting in advance\n", bl_level);
 		need_filter_backlight = true;
 	} else if (oplus_ofp_get_aod_state()) {
+		if (p_oplus_ofp_params->aod_low_brightness_threshold && bl_level) {
+			/* The backlight caller already holds panel_lock; do not lock it again. */
+			rc = oplus_ofp_panel_cmd_set_nolock(panel, oplus_ofp_aod_brightness_cmd(panel));
+			if (rc)
+				OFP_ERR("[%s] failed to update AOD brightness, rc=%d\n", panel->name, rc);
+		}
 		OFP_INFO("aod state is true, filter backlight %u setting\n", bl_level);
 		need_filter_backlight = true;
 	} else if (!oplus_ofp_get_aod_state() && (!p_oplus_ofp_params->aod_layer_disappeard_bl_ready) && bl_level
@@ -3554,10 +3589,10 @@ int oplus_ofp_power_mode_handle(void *dsi_display, int power_mode)
 					OFP_DEBUG("aod_on_cmd_timestamp:%lld\n", ktime_to_ms(p_oplus_ofp_params->aod_on_cmd_timestamp));
 				}
 
-				if (p_oplus_ofp_params->aod_light_mode) {
-					rc = oplus_ofp_display_cmd_set(display, DSI_CMD_AOD_LOW_LIGHT_MODE);
+				if (p_oplus_ofp_params->aod_low_brightness_threshold || p_oplus_ofp_params->aod_light_mode) {
+					rc = oplus_ofp_display_cmd_set(display, oplus_ofp_aod_brightness_cmd(display->panel));
 					if (rc) {
-						OFP_ERR("[%s] failed to send DSI_CMD_AOD_LOW_LIGHT_MODE cmds, rc=%d\n", display->name, rc);
+						OFP_ERR("[%s] failed to restore AOD brightness, rc=%d\n", display->name, rc);
 					}
 				}
 
@@ -3658,10 +3693,10 @@ void  oplus_ofp_video_mode_30hz_aod_on_handler(struct work_struct *work_item)
 		OFP_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmds, rc=%d\n", display->name, rc);
 	}
 
-	if (p_oplus_ofp_params->aod_light_mode) {
-		rc = oplus_ofp_display_cmd_set(display, DSI_CMD_AOD_LOW_LIGHT_MODE);
+	if (p_oplus_ofp_params->aod_low_brightness_threshold || p_oplus_ofp_params->aod_light_mode) {
+		rc = oplus_ofp_display_cmd_set(display, oplus_ofp_aod_brightness_cmd(display->panel));
 		if (rc) {
-			OFP_ERR("[%s] failed to send DSI_CMD_AOD_LOW_LIGHT_MODE cmds, rc=%d\n", display->name, rc);
+			OFP_ERR("[%s] failed to restore AOD brightness, rc=%d\n", display->name, rc);
 		}
 	}
 	OPLUS_OFP_TRACE_END("oplus_ofp_video_mode_30hz_aod_on_handler");
