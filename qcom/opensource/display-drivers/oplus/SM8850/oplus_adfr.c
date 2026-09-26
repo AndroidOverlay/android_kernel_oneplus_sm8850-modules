@@ -1003,6 +1003,15 @@ bool oplus_adfr_h_skew_is_different(void *dsi_display, void *dsi_display_mode_0,
 	return rc;
 }
 
+/* A minimum-only SA request is persistent state, not an auto-mode command. */
+static bool oplus_adfr_is_sa_min_fps_only(u64 value)
+{
+	unsigned int min_fps = OPLUS_ADFR_SA_MIN_FPS_VALUE(value);
+
+	return (value & ~0x7fULL) == (OPLUS_ADFR_SA_MAGIC | OPLUS_ADFR_SA_MIN_FPS_MAGIC)
+		&& min_fps > 0 && min_fps <= 120;
+}
+
 /* handle CONNECTOR_PROP_ADFR_MIN_FPS property value */
 int oplus_adfr_property_update(void *sde_connector, void *sde_connector_state, int prop_id, uint64_t prop_val)
 {
@@ -1052,6 +1061,16 @@ int oplus_adfr_property_update(void *sde_connector, void *sde_connector_state, i
 	if (!display->panel->cur_mode) {
 		ADFR_ERR("invalid cur_mode param\n");
 		return -EINVAL;
+	}
+
+	/*
+	 * Consume minimum-only requests from committed state at kickoff. Updating
+	 * global panel state here also affects TEST_ONLY/failed atomic requests,
+	 * and a subsequent timing switch can erase the update in status_reset().
+	 */
+	if (prop_id == CONNECTOR_PROP_ADFR_MIN_FPS && oplus_adfr_is_sa_min_fps_only(prop_val)) {
+		msm_property_set_dirty(&c_conn->property_info, &c_state->property_state, prop_id);
+		return 0;
 	}
 
 	OPLUS_ADFR_TRACE_BEGIN("oplus_adfr_property_update");
@@ -1657,6 +1676,8 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 {
 	int rc = 0;
 	unsigned int h_skew = STANDARD_ADFR;
+	unsigned int min_fps, refresh_rate;
+	u64 request;
 	struct sde_encoder_virt *sde_enc = sde_encoder_virt;
 	struct sde_connector *c_conn = NULL;
 	struct dsi_display *display = NULL;
@@ -1732,12 +1753,23 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 
 	OPLUS_ADFR_TRACE_BEGIN("oplus_adfr_sa_handle");
 
+	request = sde_connector_get_property(c_conn->base.state, CONNECTOR_PROP_ADFR_MIN_FPS);
+	refresh_rate = display->panel->cur_mode->timing.refresh_rate;
+	if (oplus_adfr_is_sa_min_fps_only(request)
+			&& (refresh_rate == 60 || refresh_rate == 90 || refresh_rate == 120)) {
+		min_fps = OPLUS_ADFR_SA_MIN_FPS_VALUE(request);
+		if (min_fps != p_oplus_adfr_params->sa_min_fps) {
+			p_oplus_adfr_params->sa_min_fps = min_fps;
+			p_oplus_adfr_params->sa_min_fps_updated = true;
+		}
+	}
+
 	if (p_oplus_adfr_params->auto_mode_updated) {
 		rc = oplus_adfr_auto_mode_update(display, p_oplus_adfr_params->auto_mode);
 		if (rc) {
 			ADFR_ERR("failed to update auto mode, rc=%d\n", rc);
 		}
-		p_oplus_adfr_params->auto_mode_updated = false;
+		p_oplus_adfr_params->auto_mode_updated = !!rc;
 		ADFR_DEBUG("oplus_adfr_auto_mode_updated:%d\n", p_oplus_adfr_params->auto_mode_updated);
 		OPLUS_ADFR_TRACE_INT("oplus_adfr_auto_mode_updated", p_oplus_adfr_params->auto_mode_updated);
 	}
@@ -1754,8 +1786,8 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 				if (rc) {
 					ADFR_ERR("failed to update sa min fps, rc=%d\n", rc);
 				}
+				p_oplus_adfr_params->sa_min_fps_updated = !!rc;
 			}
-			p_oplus_adfr_params->sa_min_fps_updated = false;
 			ADFR_DEBUG("oplus_adfr_sa_min_fps_updated:%d\n", p_oplus_adfr_params->sa_min_fps_updated);
 			OPLUS_ADFR_TRACE_INT("oplus_adfr_sa_min_fps_updated", p_oplus_adfr_params->sa_min_fps_updated);
 		}
@@ -1770,8 +1802,8 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 				if (rc) {
 					ADFR_ERR("failed to update sa min fps, rc=%d\n", rc);
 				}
+				p_oplus_adfr_params->sa_min_fps_updated = !!rc;
 			}
-			p_oplus_adfr_params->sa_min_fps_updated = false;
 			ADFR_DEBUG("oplus_adfr_sa_min_fps_updated:%d\n", p_oplus_adfr_params->sa_min_fps_updated);
 			OPLUS_ADFR_TRACE_INT("oplus_adfr_sa_min_fps_updated", p_oplus_adfr_params->sa_min_fps_updated);
 		}
