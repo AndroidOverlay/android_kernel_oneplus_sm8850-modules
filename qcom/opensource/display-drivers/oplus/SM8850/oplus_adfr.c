@@ -1676,7 +1676,7 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 {
 	int rc = 0;
 	unsigned int h_skew = STANDARD_ADFR;
-	unsigned int min_fps, refresh_rate;
+	unsigned int min_fps;
 	u64 request;
 	struct sde_encoder_virt *sde_enc = sde_encoder_virt;
 	struct sde_connector *c_conn = NULL;
@@ -1754,9 +1754,7 @@ int oplus_adfr_sa_handle(void *sde_encoder_virt)
 	OPLUS_ADFR_TRACE_BEGIN("oplus_adfr_sa_handle");
 
 	request = sde_connector_get_property(c_conn->base.state, CONNECTOR_PROP_ADFR_MIN_FPS);
-	refresh_rate = display->panel->cur_mode->timing.refresh_rate;
-	if (oplus_adfr_is_sa_min_fps_only(request)
-			&& (refresh_rate == 60 || refresh_rate == 90 || refresh_rate == 120)) {
+	if (oplus_adfr_is_sa_min_fps_only(request)) {
 		min_fps = OPLUS_ADFR_SA_MIN_FPS_VALUE(request);
 		if (min_fps != p_oplus_adfr_params->sa_min_fps) {
 			p_oplus_adfr_params->sa_min_fps = min_fps;
