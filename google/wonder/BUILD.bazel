@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Google Wonder WiFi Virtual Device driver.
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
+load(":define_modules.bzl", "define_modules")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
+
+ddk_headers(
+    name = "wonder_headers",
+    hdrs = glob([
+        "include/**/*.h",
+    ]),
+    includes = [
+        "include",
+    ],
+)
+
+define_modules("canoe", "consolidate")
+define_modules("canoe", "gki")
+define_modules("canoe", "perf")
