@@ -25,7 +25,18 @@
 /* 7 qwords for rx_mpdu_start without tag */
 #define MPDU_START_WMASK 0x07B8
 
-#ifdef DRIVER_PASSTHRU_MODE
+/*
+ * The passthru PPDU start timestamp adds a qword to the msdu_end TLV of
+ * every rx packet. Keep the 8-qword layout unless it is asked for; passthru
+ * frames are then timestamped on the host.
+ */
+#if defined(DRIVER_PASSTHRU_MODE) && defined(PASSTHRU_COMPACT_TLV_PPDU_TS)
+#define HAL_RX_COMPACT_TLV_PPDU_TS
+#elif defined(DRIVER_PASSTHRU_MODE)
+#define HAL_RX_COMPACT_TLV_NO_PPDU_TS
+#endif
+
+#ifdef HAL_RX_COMPACT_TLV_PPDU_TS
 /* 9 qwords for rx_msdu_end without tag */
 #define MSDU_END_WMASK 0x155CA
 #else
@@ -134,7 +145,7 @@ struct rx_msdu_end_compact {
                       msdu_done_copy                                          :  1;
 #endif
              uint32_t flow_id_toeplitz                                        : 32;
-#ifdef DRIVER_PASSTHRU_MODE
+#ifdef HAL_RX_COMPACT_TLV_PPDU_TS
 	/* qword-13 */
              uint32_t ppdu_start_timestamp_31_0                               : 32;
              uint32_t toeplitz_hash_2_or_4                                    : 32;
@@ -353,7 +364,7 @@ struct rx_msdu_end_compact {
                       user_rssi                                               :  8;
 #endif
              uint32_t flow_id_toeplitz                                        : 32;
-#ifdef DRIVER_PASSTHRU_MODE
+#ifdef HAL_RX_COMPACT_TLV_PPDU_TS
         /* qword-13 */
              uint32_t toeplitz_hash_2_or_4                                    : 32;
              uint32_t ppdu_start_timestamp_31_0                               : 32;

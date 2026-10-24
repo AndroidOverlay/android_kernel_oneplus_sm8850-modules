@@ -1211,8 +1211,13 @@ int dp_rx_deliver_raw_passthru(struct dp_soc *soc, struct dp_vdev *vdev,
 
 	rx_status.tsft = hal_rx_tlv_get_ppdu_start_ts(soc->hal_soc,
 						      rx_pkt_tlvs);
-	rx_status.tsft = (rx_status.tsft << DP_PPDU_START_TS_LSHIFT_VAL) /
-			 DP_PPDU_START_TS_CLK_HZ;
+	if (rx_status.tsft)
+		rx_status.tsft = (rx_status.tsft << DP_PPDU_START_TS_LSHIFT_VAL) /
+				 DP_PPDU_START_TS_CLK_HZ;
+	else
+		/* No PPDU timestamp in the rx TLVs, use host time */
+		rx_status.tsft =
+			qdf_log_timestamp_to_usecs(qdf_get_log_timestamp());
 	rx_status.rs_fcs_err = hal_rx_tlv_mpdu_fcs_err_get(soc->hal_soc,
 							   rx_pkt_tlvs);
 	rx_status.mon_fcs_cap = 1;

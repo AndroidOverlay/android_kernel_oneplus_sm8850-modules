@@ -229,8 +229,12 @@ struct rx_pkt_tlvs {
 	HAL_RX_MSDU_END(_rx_pkt_tlv).flow_id_toeplitz
 
 #ifdef DRIVER_PASSTHRU_MODE
+#ifdef HAL_RX_COMPACT_TLV_NO_PPDU_TS
+#define HAL_RX_TLV_GET_PPDU_START_TS_31_0(_rx_pkt_tlv) ((void)(_rx_pkt_tlv), 0)
+#else
 #define HAL_RX_TLV_GET_PPDU_START_TS_31_0(_rx_pkt_tlv) \
 	HAL_RX_MSDU_END(_rx_pkt_tlv).ppdu_start_timestamp_31_0
+#endif
 #endif
 
 #define HAL_RX_TLV_MSDU_LEN_GET(_rx_pkt_tlv)		\
