@@ -2784,7 +2784,8 @@ def _define_module_for_target_variant_chipset(target, variant, chipset):
 
     deps = deps + select({
         ":wonder_enabled": [
-	    # Add dependency of wonder here
+            modules_label("google/wonder:{}_wonder".format(tv)),
+            modules_label("google/wonder:wonder_headers"),
         ],
         "//conditions:default": [],
     })
